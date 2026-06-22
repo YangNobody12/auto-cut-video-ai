@@ -1,7 +1,9 @@
 # Project
 venv/
-.env
-temp/
+tools/deep-filter/deep-filter
+tools/deep-filter/deep-filter.exe
+
+.envtemp/
 output/
 input/*.mp4
 input/*.mov

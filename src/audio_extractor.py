@@ -8,7 +8,12 @@ import subprocess
 from pathlib import Path
 
 
-def extract_audio(video_path: str, output_path: str | None = None, sample_rate: int = 16000) -> str:
+def extract_audio(
+    video_path: str,
+    output_path: str | None = None,
+    sample_rate: int = 16000,
+    force: bool = False,
+) -> str:
     """
     Extract audio from video to a mono WAV file using FFmpeg.
 
@@ -32,7 +37,7 @@ def extract_audio(video_path: str, output_path: str | None = None, sample_rate: 
     output_path = Path(output_path).resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if output_path.exists():
+    if output_path.exists() and not force:
         print(f"[audio_extractor] Reusing existing audio: {output_path}")
         return str(output_path)
 

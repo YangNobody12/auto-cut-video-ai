@@ -31,6 +31,12 @@ OPENAI_API_KEY=sk-...
 
 Supported providers: `openai` (GPT-4o), `anthropic` (Claude), `gemini` (Gemini 1.5 Pro)
 
+### 4. Noise reduction (optional)
+
+`--denoise` uses [DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) via the `deep-filter` CLI.
+On first use, the Windows binary is auto-downloaded to `tools/deep-filter/`.
+You can also install manually from the [releases page](https://github.com/Rikorose/DeepFilterNet/releases).
+
 ---
 
 ## Usage
@@ -52,6 +58,9 @@ python main.py --list-sizes
 # Remove silence and add subtitles (full video, YouTube format)
 python main.py --input video.mp4 --remove-silence --subtitle
 
+# Denoise + silence removal + subtitles
+python main.py --input video.mp4 --denoise --remove-silence --subtitle --sub-language th
+
 # AI hook detection → 30s TikTok clip with karaoke subtitles
 python main.py --input video.mp4 --hook --mode short --duration 30 --size 9:16 --subtitle --sub-style karaoke
 
@@ -71,6 +80,7 @@ python main.py --batch input/ --remove-silence --subtitle --size 9:16
 
 | Feature | Flag | Description |
 |---|---|---|
+| Noise reduction | `--denoise` | DeepFilterNet background noise removal |
 | Silence removal | `--remove-silence` | Cuts dead-air segments |
 | Hook detection | `--hook` | Finds best engagement moment |
 | AI hook scoring | `--hook-ai` | Uses GPT-4o/Claude/Gemini to analyze transcript |
@@ -120,12 +130,15 @@ auto-cut-ai/
 ├── input/               ← Drop source videos here
 ├── output/              ← Exported videos saved here
 ├── temp/                ← Working files (auto-cleaned)
+├── tools/
+│   └── deep-filter/     ← deep-filter binary (auto-downloaded on first --denoise)
 ├── assets/
 │   ├── music/           ← Background music files
 │   └── fonts/           ← Custom fonts
 └── src/
     ├── editor.py        ← Pipeline orchestrator
     ├── audio_extractor.py
+    ├── noise_reducer.py   ← DeepFilterNet noise removal
     ├── transcriber.py
     ├── silence_remover.py
     ├── hook_detector.py

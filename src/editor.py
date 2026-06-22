@@ -25,6 +25,12 @@ class EditConfig:
     size: str = "16:9"
     fps: int = 30
 
+    # Noise reduction
+    denoise: bool = False
+    denoise_postfilter: bool = False
+    deep_filter_bin: str | None = None
+    denoise_workers: int | None = None
+
     # Silence removal
     remove_silence: bool = False
     silence_thresh_db: float = -40.0
@@ -70,6 +76,7 @@ def run_pipeline(cfg: EditConfig) -> EditResult:
     Execute the full editing pipeline based on the config.
 
     Pipeline order:
+        0. Noise reduction   (if denoise — DeepFilterNet)
         1. Audio extraction  (always)
         2. Transcription     (if hook+ai — original audio for hook scoring)
         3. Silence removal   (if remove_silence)
@@ -117,11 +124,36 @@ def run_pipeline(cfg: EditConfig) -> EditResult:
     segments: list[dict] = []
     sub_segments: list[dict] = []
 
+    # ── Step 0: Noise reduction ─────────────────────────────────────────────────
+    if cfg.denoise:
+        print("\n" + "=" * 60)
+        print("Step 0 — Noise Reduction (DeepFilterNet)")
+        print("=" * 60)
+        from src.noise_reducer import denoise_video
+
+        denoised_out = str(temp_dir / f"{input_path.stem}_denoised.mp4")
+        working_video = denoise_video(
+            working_video,
+            denoised_out,
+            temp_dir=temp_dir,
+            postfilter=cfg.denoise_postfilter,
+            deep_filter_bin=cfg.deep_filter_bin,
+            workers=cfg.denoise_workers,
+        )
+        result.steps_completed.append("noise_reduction")
+    else:
+        print("\nStep 0 — Noise Reduction: SKIPPED")
+
     # ── Step 1: Extract audio ───────────────────────────────────────────────────
     print("\n" + "=" * 60)
     print("Step 1/7 — Audio Extraction")
     print("=" * 60)
-    audio_path = extract_audio(working_video, str(temp_dir / f"{input_path.stem}.wav"))
+    audio_wav = temp_dir / f"{Path(working_video).stem}.wav"
+    audio_path = extract_audio(
+        working_video,
+        str(audio_wav),
+        force=cfg.denoise,
+    )
     result.audio_path = audio_path
     result.steps_completed.append("audio_extraction")
 
@@ -194,6 +226,7 @@ def run_pipeline(cfg: EditConfig) -> EditResult:
             sub_audio = extract_audio(
                 working_video,
                 str(temp_dir / f"{input_path.stem}_subaudio.wav"),
+                force=True,
             )
             tr = transcribe(
                 sub_audio,
@@ -201,10 +234,13 @@ def run_pipeline(cfg: EditConfig) -> EditResult:
                 language=cfg.subtitle_language,
                 output_dir=str(temp_dir),
                 formats=["srt", "json"],
+                vad_filter=False,
+                beam_size=5,
             )
             sub_segments = tr["segments"]
             cfg.srt_path = tr.get("srt_path")
             result.transcript_segments = sub_segments
+            print(f"[editor] Transcribed {len(sub_segments)} subtitle segments")
 
         if sub_segments:
             sub_target = str(output_path) if not cfg.add_music and cfg.mode == "long" else sub_out
@@ -213,6 +249,7 @@ def run_pipeline(cfg: EditConfig) -> EditResult:
                 sub_segments,
                 sub_target,
                 style=cfg.subtitle_style,
+                language=cfg.subtitle_language,
                 crf=cfg.crf,
             )
             if sub_target == str(output_path):

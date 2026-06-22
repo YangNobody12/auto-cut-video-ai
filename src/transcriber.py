@@ -80,13 +80,21 @@ def _create_model(model_name: str, device: str | None = None, compute_type: str 
     raise RuntimeError(f"Could not load faster-whisper model '{resolved_model}'") from last_error
 
 
-def _run_transcription(model, audio_path: Path, language: str | None):
+def _run_transcription(
+    model,
+    audio_path: Path,
+    language: str | None,
+    *,
+    vad_filter: bool = True,
+    beam_size: int = 1,
+):
     seg_gen, info = model.transcribe(
         str(audio_path),
         language=language,
         word_timestamps=True,
-        beam_size=1,
-        vad_filter=True,
+        beam_size=beam_size,
+        vad_filter=vad_filter,
+        no_speech_threshold=0.4 if not vad_filter else 0.6,
     )
 
     segments: list[dict] = []
@@ -109,6 +117,8 @@ def transcribe(
     language: str | None = None,
     output_dir: str | None = None,
     formats: list[str] | None = None,
+    vad_filter: bool = True,
+    beam_size: int = 1,
 ) -> dict:
     """
     Transcribe audio file with faster-whisper.
@@ -143,13 +153,17 @@ def transcribe(
 
     print(f"[transcriber] Transcribing {audio_path.name} ...")
     try:
-        segments, full_text, detected_language = _run_transcription(model, audio_path, language)
+        segments, full_text, detected_language = _run_transcription(
+            model, audio_path, language, vad_filter=vad_filter, beam_size=beam_size
+        )
     except RuntimeError as exc:
         msg = str(exc).lower()
         if "cuda" in msg or "cublas" in msg or "cudnn" in msg:
             print(f"[transcriber] Accelerator inference failed, retrying on CPU: {exc}")
             model = _create_model(model_name, device="cpu", compute_type="int8")
-            segments, full_text, detected_language = _run_transcription(model, audio_path, language)
+            segments, full_text, detected_language = _run_transcription(
+                model, audio_path, language, vad_filter=vad_filter, beam_size=beam_size
+            )
         else:
             raise
 

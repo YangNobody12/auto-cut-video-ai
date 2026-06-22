@@ -63,6 +63,17 @@ def build_parser() -> argparse.ArgumentParser:
     silence.add_argument("--min-silence-ms", type=int, default=500, metavar="MS",
                          help="Minimum silence duration to cut in ms (default: 500).")
 
+    # ── Noise Reduction ───────────────────────────────────────────────────────────
+    denoise = p.add_argument_group("Noise Reduction (DeepFilterNet)")
+    denoise.add_argument("--denoise", action="store_true",
+                         help="Remove background noise using DeepFilterNet before editing.")
+    denoise.add_argument("--denoise-postfilter", action="store_true",
+                         help="Enable DeepFilterNet post-filter for stronger noise suppression.")
+    denoise.add_argument("--deep-filter-bin", metavar="PATH",
+                         help="Path to deep-filter binary (default: tools/deep-filter/ or PATH).")
+    denoise.add_argument("--denoise-workers", type=int, default=None, metavar="N",
+                         help="Parallel denoise workers (default: up to 8 CPU cores).")
+
     # ── Hook Detection ───────────────────────────────────────────────────────────
     hook = p.add_argument_group("Hook Detection")
     hook.add_argument("--hook", action="store_true",
@@ -139,9 +150,15 @@ def cmd_list_sizes():
 
 def cmd_check_env():
     from src.audio_extractor import check_ffmpeg
+    from src.noise_reducer import check_deep_filter, default_denoise_workers, resolve_deep_filter_bin
     from src.ai_client import is_available, PROVIDER, OPENAI_KEY, ANTHROPIC_KEY, GOOGLE_KEY
+    df_bin = resolve_deep_filter_bin()
     print("\nEnvironment Check:")
     print(f"  FFmpeg       : {'OK' if check_ffmpeg() else 'NOT FOUND — Install FFmpeg'}")
+    print(f"  deep-filter  : {'OK' if check_deep_filter() else 'NOT FOUND — runs auto-download on first --denoise'}")
+    if df_bin:
+        print(f"                 ({df_bin})")
+        print(f"  denoise CPU  : {default_denoise_workers()} parallel workers (deep-filter is CPU-only)")
     print(f"  AI provider  : {PROVIDER or '(auto-detect)'}")
     print(f"  OpenAI key   : {'SET' if OPENAI_KEY else 'not set'}")
     print(f"  Anthropic key: {'SET' if ANTHROPIC_KEY else 'not set'}")
@@ -182,6 +199,10 @@ def process_single(args) -> int:
         remove_silence=args.remove_silence,
         silence_thresh_db=args.silence_thresh,
         min_silence_ms=args.min_silence_ms,
+        denoise=args.denoise,
+        denoise_postfilter=args.denoise_postfilter,
+        deep_filter_bin=args.deep_filter_bin,
+        denoise_workers=args.denoise_workers,
         find_hook=args.hook,
         hook_duration=args.hook_duration,
         hook_ai=args.hook_ai,
