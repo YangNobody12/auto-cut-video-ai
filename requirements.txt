@@ -1,0 +1,16 @@
+moviepy>=2.1.0
+faster-whisper
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
+pydub==0.25.1
+librosa
+numpy
+Pillow
+tqdm
+pyyaml
+ffmpeg-python==0.2.0
+openai>=1.35.0
+anthropic>=0.30.0
+google-generativeai>=0.7.0
+python-dotenv==1.0.1
+imageio-ffmpeg

@@ -1,0 +1,13 @@
+venv/
+.env
+temp/
+output/
+input/*.mp4
+input/*.mov
+input/*.mkv
+input/*.avi
+input/*.webm
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
