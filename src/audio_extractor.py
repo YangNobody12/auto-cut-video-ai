@@ -38,8 +38,10 @@ def extract_audio(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if output_path.exists() and not force:
-        print(f"[audio_extractor] Reusing existing audio: {output_path}")
-        return str(output_path)
+        if output_path.stat().st_mtime >= video_path.stat().st_mtime:
+            print(f"[audio_extractor] Reusing cached audio: {output_path}")
+            return str(output_path)
+        print(f"[audio_extractor] Source video newer than cache, re-extracting ...")
 
     print(f"[audio_extractor] Extracting audio from {video_path.name} ...")
     cmd = [

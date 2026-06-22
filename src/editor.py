@@ -78,12 +78,12 @@ def run_pipeline(cfg: EditConfig) -> EditResult:
     Pipeline order:
         0. Noise reduction   (if denoise — DeepFilterNet)
         1. Audio extraction  (always)
-        2. Transcription     (if hook+ai — original audio for hook scoring)
-        3. Silence removal   (if remove_silence)
-        4. Hook detection    (if find_hook)
-        5. Subtitle rendering(if add_subtitle — transcribe working_video for correct timeline)
+        2. Transcription     (if hook+ai — for hook candidate ranking)
+        3. Hook detection    (if find_hook — BEFORE silence, timestamps match video)
+        4. Silence removal   (if remove_silence — on hook clip or full video)
+        5. Subtitle rendering(if add_subtitle)
         6. Music mixing      (if add_music)
-        7. Clip export       (always — resize + final output)
+        7. Clip export       (always)
 
     Returns:
         EditResult with paths, transcript, hook info, timing.
@@ -149,11 +149,7 @@ def run_pipeline(cfg: EditConfig) -> EditResult:
     print("Step 1/7 — Audio Extraction")
     print("=" * 60)
     audio_wav = temp_dir / f"{Path(working_video).stem}.wav"
-    audio_path = extract_audio(
-        working_video,
-        str(audio_wav),
-        force=cfg.denoise,
-    )
+    audio_path = extract_audio(working_video, str(audio_wav))
     result.audio_path = audio_path
     result.steps_completed.append("audio_extraction")
 
@@ -168,6 +164,8 @@ def run_pipeline(cfg: EditConfig) -> EditResult:
             language=cfg.subtitle_language,
             output_dir=str(temp_dir),
             formats=["srt", "json"],
+            vad_filter=False,
+            beam_size=5,
         )
         segments = tr["segments"]
         result.transcript_segments = segments
@@ -175,10 +173,29 @@ def run_pipeline(cfg: EditConfig) -> EditResult:
     else:
         print("\nStep 2/7 — Transcription: SKIPPED")
 
-    # ── Step 3: Silence removal ─────────────────────────────────────────────────
+    # ── Step 3: Hook detection (before silence — timestamps must match video) ───
+    if cfg.find_hook:
+        print("\n" + "=" * 60)
+        print("Step 3/7 — Hook Detection")
+        print("=" * 60)
+        hook_result = detect_hook(
+            audio_path,
+            segments=segments if segments else None,
+            target_duration=cfg.hook_duration,
+            use_ai=cfg.hook_ai,
+        )
+        result.hook = hook_result
+        hook_out = str(temp_dir / f"{input_path.stem}_hook.mp4")
+        working_video = extract_hook_clip(working_video, hook_result, hook_out, crf=cfg.crf)
+        result.steps_completed.append("hook_detection")
+        audio_path = extract_audio(working_video, str(temp_dir / f"{Path(working_video).stem}.wav"))
+    else:
+        print("\nStep 3/7 — Hook Detection: SKIPPED")
+
+    # ── Step 4: Silence removal ─────────────────────────────────────────────────
     if cfg.remove_silence:
         print("\n" + "=" * 60)
-        print("Step 3/7 — Silence Removal")
+        print("Step 4/7 — Silence Removal")
         print("=" * 60)
         silence_out = str(temp_dir / f"{input_path.stem}_nosilence.mp4")
         working_video = remove_silence(
@@ -191,25 +208,7 @@ def run_pipeline(cfg: EditConfig) -> EditResult:
         )
         result.steps_completed.append("silence_removal")
     else:
-        print("\nStep 3/7 — Silence Removal: SKIPPED")
-
-    # ── Step 4: Hook detection ──────────────────────────────────────────────────
-    if cfg.find_hook:
-        print("\n" + "=" * 60)
-        print("Step 4/7 — Hook Detection")
-        print("=" * 60)
-        hook_result = detect_hook(
-            audio_path,
-            segments=segments if segments else None,
-            target_duration=cfg.hook_duration,
-            use_ai=cfg.hook_ai,
-        )
-        result.hook = hook_result
-        hook_out = str(temp_dir / f"{input_path.stem}_hook.mp4")
-        working_video = extract_hook_clip(working_video, hook_result, hook_out)
-        result.steps_completed.append("hook_detection")
-    else:
-        print("\nStep 4/7 — Hook Detection: SKIPPED")
+        print("\nStep 4/7 — Silence Removal: SKIPPED")
 
     # ── Step 5: Subtitle rendering ──────────────────────────────────────────────
     if cfg.add_subtitle:
@@ -223,11 +222,14 @@ def run_pipeline(cfg: EditConfig) -> EditResult:
             from src.subtitle_renderer import _parse_srt as srt_parse
             sub_segments = srt_parse(cfg.srt_path)
         else:
-            sub_audio = extract_audio(
-                working_video,
-                str(temp_dir / f"{input_path.stem}_subaudio.wav"),
-                force=True,
-            )
+            sub_stem = Path(working_video).stem
+            legacy_wav = temp_dir / f"{input_path.stem}_subaudio.wav"
+            sub_wav = temp_dir / f"{sub_stem}.wav"
+            if not sub_wav.exists() and legacy_wav.exists():
+                sub_audio = str(legacy_wav)
+                print(f"[editor] Using legacy cached audio: {legacy_wav.name}")
+            else:
+                sub_audio = extract_audio(working_video, str(sub_wav))
             tr = transcribe(
                 sub_audio,
                 model_name=cfg.whisper_model,

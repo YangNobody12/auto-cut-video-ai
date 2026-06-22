@@ -151,7 +151,7 @@ def cmd_list_sizes():
 def cmd_check_env():
     from src.audio_extractor import check_ffmpeg
     from src.noise_reducer import check_deep_filter, default_denoise_workers, resolve_deep_filter_bin
-    from src.ai_client import is_available, PROVIDER, OPENAI_KEY, ANTHROPIC_KEY, GOOGLE_KEY
+    from src.ai_client import is_available, PROVIDER, OPENAI_KEY, ANTHROPIC_KEY, GOOGLE_KEY, TYPHOON_KEY, TYPHOON_MODEL
     df_bin = resolve_deep_filter_bin()
     print("\nEnvironment Check:")
     print(f"  FFmpeg       : {'OK' if check_ffmpeg() else 'NOT FOUND — Install FFmpeg'}")
@@ -161,6 +161,9 @@ def cmd_check_env():
         print(f"  denoise CPU  : {default_denoise_workers()} parallel workers (deep-filter is CPU-only)")
     print(f"  AI provider  : {PROVIDER or '(auto-detect)'}")
     print(f"  OpenAI key   : {'SET' if OPENAI_KEY else 'not set'}")
+    print(f"  Typhoon key  : {'SET' if TYPHOON_KEY else 'not set'}")
+    if TYPHOON_KEY:
+        print(f"  Typhoon model: {TYPHOON_MODEL}")
     print(f"  Anthropic key: {'SET' if ANTHROPIC_KEY else 'not set'}")
     print(f"  Google key   : {'SET' if GOOGLE_KEY else 'not set'}")
     print(f"  AI available : {'YES' if is_available() else 'NO (audio-only hook detection)'}")

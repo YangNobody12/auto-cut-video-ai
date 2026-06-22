@@ -111,6 +111,96 @@ def _run_transcription(
     return segments, full_text, detected_language
 
 
+def _transcribe_meta_path(output_dir: Path, stem: str) -> Path:
+    return output_dir / f"{stem}.transcribe.meta.json"
+
+
+def _transcribe_params_match(meta: dict, model_name: str, language: str | None, vad_filter: bool, beam_size: int) -> bool:
+    return (
+        meta.get("model_name") == model_name
+        and meta.get("language") == language
+        and meta.get("vad_filter") == vad_filter
+        and meta.get("beam_size") == beam_size
+    )
+
+
+def _write_transcribe_meta(
+    meta_path: Path,
+    audio_path: Path,
+    model_name: str,
+    language: str | None,
+    vad_filter: bool,
+    beam_size: int,
+) -> None:
+    meta_path.write_text(
+        json.dumps(
+            {
+                "audio_path": str(audio_path),
+                "audio_mtime_ns": audio_path.stat().st_mtime_ns,
+                "model_name": model_name,
+                "language": language,
+                "vad_filter": vad_filter,
+                "beam_size": beam_size,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _load_cached_transcription(
+    audio_path: Path,
+    output_dir: Path,
+    formats: list[str],
+    model_name: str,
+    language: str | None,
+    vad_filter: bool,
+    beam_size: int,
+) -> dict | None:
+    stem = audio_path.stem
+    json_path = output_dir / f"{stem}.json"
+    if not json_path.exists():
+        return None
+
+    if json_path.stat().st_mtime < audio_path.stat().st_mtime:
+        return None
+
+    meta_path = _transcribe_meta_path(output_dir, stem)
+    meta: dict = {}
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            meta = {}
+        if meta and not _transcribe_params_match(meta, model_name, language, vad_filter, beam_size):
+            return None
+
+    segments = load_segments_from_json(str(json_path))
+    if not segments:
+        return None
+
+    saved: dict[str, str] = {"json_path": str(json_path)}
+    srt_path = output_dir / f"{stem}.srt"
+    if "srt" in formats and srt_path.exists():
+        saved["srt_path"] = str(srt_path)
+    vtt_path = output_dir / f"{stem}.vtt"
+    if "vtt" in formats and vtt_path.exists():
+        saved["vtt_path"] = str(vtt_path)
+    txt_path = output_dir / f"{stem}.txt"
+    if "txt" in formats and txt_path.exists():
+        saved["txt_path"] = str(txt_path)
+
+    full_text = " ".join(seg["text"] for seg in segments if seg.get("text")).strip()
+    print(f"[transcriber] Reusing cached transcript: {json_path} ({len(segments)} segments)")
+    return {
+        "segments": segments,
+        "language": meta.get("language") or language or "unknown",
+        "text": full_text,
+        **saved,
+    }
+
+
 def transcribe(
     audio_path: str,
     model_name: str = "base",
@@ -119,6 +209,7 @@ def transcribe(
     formats: list[str] | None = None,
     vad_filter: bool = True,
     beam_size: int = 1,
+    force: bool = False,
 ) -> dict:
     """
     Transcribe audio file with faster-whisper.
@@ -148,6 +239,13 @@ def transcribe(
         output_dir = audio_path.parent
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    if not force:
+        cached = _load_cached_transcription(
+            audio_path, output_dir, formats, model_name, language, vad_filter, beam_size
+        )
+        if cached:
+            return cached
 
     model = _create_model(model_name)
 
@@ -193,6 +291,15 @@ def transcribe(
         txt_path.write_text(full_text, encoding="utf-8")
         saved["txt_path"] = str(txt_path)
         print(f"[transcriber] TXT saved: {txt_path}")
+
+    _write_transcribe_meta(
+        _transcribe_meta_path(output_dir, stem),
+        audio_path,
+        model_name,
+        language,
+        vad_filter,
+        beam_size,
+    )
 
     return {
         "segments": segments,

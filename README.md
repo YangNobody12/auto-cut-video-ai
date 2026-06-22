@@ -29,7 +29,15 @@ AI_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 ```
 
-Supported providers: `openai` (GPT-4o), `anthropic` (Claude), `gemini` (Gemini 1.5 Pro)
+Supported providers: `typhoon` (OpenTyphoon), `openai` (GPT-4o), `anthropic` (Claude), `gemini` (Gemini 1.5 Pro)
+
+**OpenTyphoon (แนะนำสำหรับภาษาไทย):**
+```ini
+AI_PROVIDER=typhoon
+THPHOON_API_KEY=sk-...
+# optional: TYPHOON_MODEL=typhoon-v2.5-30b-a3b-instruct
+```
+Uses the [OpenTyphoon API](https://docs.opentyphoon.ai/en/) (OpenAI-compatible).
 
 ### 4. Noise reduction (optional)
 
